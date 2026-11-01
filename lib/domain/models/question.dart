@@ -14,9 +14,41 @@ final class Question {
 
   /// Reads one question from the API. Unknown fields are ignored.
   ///
-  /// TODO(W3): throw a FormatException for a missing or wrongly typed field,
-  /// or when `choices` is not a list of 2 to 6 non-empty strings.
+  /// Throws a [FormatException] for a missing or wrongly typed field, or when
+  /// `choices` is not a list of 2 to 6 non-empty strings.
   factory Question.fromJson(Map<String, Object?> json) {
-    throw UnimplementedError('Question.fromJson');
+    final id = _nonEmptyString(json, 'id');
+    final skillId = _nonEmptyString(json, 'skillId');
+    final stem = _nonEmptyString(json, 'stem');
+
+    final rawChoices = json['choices'];
+    if (rawChoices is! List<Object?>) {
+      throw const FormatException('choices must be a list');
+    }
+    if (rawChoices.length < 2 || rawChoices.length > 6) {
+      throw const FormatException('choices must have 2 to 6 items');
+    }
+    final choices = <String>[];
+    for (final choice in rawChoices) {
+      if (choice is! String || choice.isEmpty) {
+        throw const FormatException('every choice must be a non-empty string');
+      }
+      choices.add(choice);
+    }
+
+    return Question(
+      id: id,
+      skillId: skillId,
+      stem: stem,
+      choices: List<String>.unmodifiable(choices),
+    );
+  }
+
+  static String _nonEmptyString(Map<String, Object?> json, String key) {
+    final value = json[key];
+    if (value is! String || value.isEmpty) {
+      throw FormatException('$key must be a non-empty string');
+    }
+    return value;
   }
 }

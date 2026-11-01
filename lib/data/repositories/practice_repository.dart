@@ -1,5 +1,6 @@
 import '../../domain/models/question.dart';
 import '../../utils/result.dart';
+import '../services/api_failure.dart';
 import '../services/question_api.dart';
 
 /// The source of truth for practice questions. Owns the retry policy.
@@ -14,17 +15,35 @@ class PracticeRepository {
         _sleep = sleep,
         _maxRetries = maxRetries;
 
-  // ignore: unused_field
   final QuestionApi _api;
-  // ignore: unused_field
   final Future<void> Function(Duration) _sleep;
-  // ignore: unused_field
   final int _maxRetries;
 
-  /// TODO(W3): retry transient failures at most maxRetries times, waiting
-  /// 1 s, 2 s, ... (Retry-After for 429, capped at 30 s). Return permanent
-  /// failures after one call.
+  static const Duration _maxRateLimitWait = Duration(seconds: 30);
+
+  /// Retries transient failures at most `maxRetries` times, waiting 1 s, 2 s,
+  /// 4 s, ... (Retry-After for 429, capped at 30 s). Permanent failures are
+  /// returned after one call. When retries run out, the last result is returned.
   Future<Result<List<Question>>> nextQuestions(String studentId) async {
-    throw UnimplementedError('PracticeRepository.nextQuestions');
+    var result = await _api.fetchNext(studentId: studentId);
+    var retry = 0;
+
+    while (result is Err<List<Question>> &&
+        result.failure.isTransient &&
+        retry < _maxRetries) {
+      await _sleep(_waitFor(result.failure, retry));
+      retry++;
+      result = await _api.fetchNext(studentId: studentId);
+    }
+    return result;
+  }
+
+  Duration _waitFor(ApiFailure failure, int retryIndex) {
+    if (failure is RateLimited) {
+      return failure.retryAfter > _maxRateLimitWait
+          ? _maxRateLimitWait
+          : failure.retryAfter;
+    }
+    return Duration(seconds: 1 << retryIndex);
   }
 }
